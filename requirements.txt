@@ -1,0 +1,5 @@
+-e .
+pytest
+boto3==1.12.5
+PyYAML==5.3
+kubernetes==10.0.1
