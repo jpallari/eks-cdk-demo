@@ -63,8 +63,8 @@ def eks_user(
 def eks_node_role(
     scope: core.Construct,
     id: str,
-    role_name: str,
     cluster: aws_eks.ICluster,
+    role_name: typing.Optional[str]=None,
 ) -> aws_iam.Role:
     role = aws_iam.Role(
         scope=scope,
