@@ -35,7 +35,7 @@ class NetworkStack(core.Stack):
         core.Tag.add(
             scope=self.vpc,
             key='kubernetes.io/cluster/%s' % cluster_name,
-            value='1',
+            value='shared',
         )
 
         for subnet in self.vpc.private_subnets:
@@ -46,7 +46,7 @@ class NetworkStack(core.Stack):
             )
             core.Tag.add(
                 scope=subnet,
-                key=('kubernetes.io/cluster/%s' % cluster_name),
+                key='kubernetes.io/cluster/%s' % cluster_name,
                 value='shared',
             )
 
