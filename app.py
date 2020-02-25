@@ -27,7 +27,7 @@ network_stack = infra.network.NetworkStack(
     env=env,
     tags=tags
 )
-cluster_stack = infra.eks.EksMasterStack(
+cluster_stack = infra.eks.EksStack(
     scope=app,
     id=name + '-eks',
     cluster_name=cluster_name,
@@ -42,15 +42,6 @@ cluster_users_stack = infra.cluster_users.ClusterUsersStack(
     clusters=[cluster_stack.cluster],
     env=env,
     tags=tags
-)
-_ = infra.eks.EksNodeGroupStack(
-    scope=app,
-    id=name + '-eks-nodegroups',
-    cluster=cluster_stack.cluster,
-    cluster_version=cluster_version,
-    cluster_sg=cluster_stack.cluster_sg,
-    env=env,
-    tags=tags,
 )
 
 app.synth()

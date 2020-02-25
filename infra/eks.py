@@ -10,7 +10,7 @@ from aws_cdk import (
     aws_ssm,
 )
 
-class EksMasterStack(core.Stack):
+class EksStack(core.Stack):
     def __init__(
         self,
         scope: core.Construct,
@@ -21,64 +21,85 @@ class EksMasterStack(core.Stack):
         **kwargs,
     ) -> None:
         super().__init__(scope, id, **kwargs)
+        self.cluster_version = cluster_version
+        self.vpc = vpc
 
-        self.cluster_sg = aws_ec2.SecurityGroup(
-            scope=self,
-            id='eks-control-plane-sg',
-            vpc=vpc,
-            allow_all_outbound=True,
-        )
+        # Control plane
 
-        self.cluster_sg.add_ingress_rule(
-            peer=self.cluster_sg,
-            connection=aws_ec2.Port.all_traffic(),
-        )
-
+        self.control_plane_sg = self._control_plane_sg(id='control-plane-sg')
         self.cluster = aws_eks.Cluster(
             scope=self,
-            id='eks-cluster',
+            id='cluster',
             cluster_name=cluster_name,
             kubectl_enabled=False,
             default_capacity=0,
             vpc=vpc,
             version=cluster_version,
-            security_group=self.cluster_sg,
+            security_group=self.control_plane_sg,
         )
 
+        # Nodes
 
-class EksNodeGroupStack(core.Stack):
-    def __init__(
-        self,
-        scope: core.Construct,
-        id: str,
-        cluster: aws_eks.ICluster,
-        cluster_version: str,
-        cluster_sg: aws_ec2.ISecurityGroup,
-        **kwargs,
-    ) -> None:
-        super().__init__(scope, id, **kwargs)
-        self.cluster = cluster
-        self.cluster_version = cluster_version
-        self.cluster_sg = cluster_sg
-
-        node_sg = self._create_node_sg()
+        self.node_sg = self._create_node_sg(id='node-sg')
         self.default_asg = self._node_group(
             name='default',
             instance_type=aws_ec2.InstanceType.of(
                 instance_class=aws_ec2.InstanceClass.BURSTABLE3,
                 instance_size=aws_ec2.InstanceSize.LARGE,
             ),
-            node_sg=node_sg,
             min_capacity=1,
             max_capacity=5,
             rolling_update_pause_time=core.Duration.minutes(amount=1),
+            kubelet_extra_args={
+                'eviction-hard': 'memory.available<0.5Gi,nodefs.available<5%',
+            }
         )
+
+    def _control_plane_sg(self, id: str) -> aws_ec2.ISecurityGroup:
+        sg = aws_ec2.SecurityGroup(
+            scope=self,
+            id=id,
+            vpc=self.vpc,
+        )
+        return sg
+
+    def _create_node_sg(self, id: str) -> aws_ec2.ISecurityGroup:
+        sg = aws_ec2.SecurityGroup(
+            scope=self,
+            id=id,
+            vpc=self.vpc,
+            allow_all_outbound=True,
+        )
+        _add_eks_owned_tag(sg, self.cluster)
+
+        # Allow all within the worker nodes
+        sg.add_ingress_rule(
+            peer=sg,
+            connection=aws_ec2.Port.all_traffic(),
+        )
+
+        # Allow ports 0-65535 from control plane to workers
+        sg.add_ingress_rule(
+            peer=self.control_plane_sg,
+            connection=aws_ec2.Port.tcp_range(start_port=0, end_port=65535),
+        )
+        self.control_plane_sg.add_egress_rule(
+            peer=sg,
+            connection=aws_ec2.Port.tcp_range(start_port=0, end_port=65535),
+        )
+
+        # Allow port 443 from workers to control plane
+        self.control_plane_sg.add_ingress_rule(
+            peer=sg,
+            connection=aws_ec2.Port.tcp(port=443),
+        )
+
+        return sg
 
     def _node_group(
         self,
         name: str,
         instance_type: aws_ec2.InstanceType,
-        node_sg: aws_ec2.ISecurityGroup,
         min_capacity: int,
         max_capacity: int,
         root_volume_size: int=20,
@@ -87,7 +108,7 @@ class EksNodeGroupStack(core.Stack):
     ) -> aws_autoscaling.IAutoScalingGroup:
         role = eks_user.eks_node_role(
             scope=self,
-            id=f'eks-{name}-node-role',
+            id=f'{name}-node-role',
             cluster=self.cluster,
         )
 
@@ -109,7 +130,7 @@ class EksNodeGroupStack(core.Stack):
                 node_type=aws_eks.NodeType.STANDARD,
             ),
             user_data=aws_ec2.UserData.custom(
-                self._node_userdata(_kubelet_args_to_str(name, kubelet_extra_args))
+                self._node_userdata(_kubelet_args_to_str(name, labels={}, args=kubelet_extra_args))
             ),
             vpc=self.cluster.vpc,
             role=role,
@@ -127,36 +148,10 @@ class EksNodeGroupStack(core.Stack):
                 ],
             ),
         )
-        asg.add_security_group(node_sg)
-
-        core.Tag.add(
-            scope=asg,
-            key='kubernetes.io/cluster/%s' % self.cluster.cluster_name,
-            value='owned',
-            apply_to_launched_instances=True,
-        )
+        asg.add_security_group(self.node_sg)
+        _add_eks_owned_tag(asg, self.cluster)
 
         return asg
-
-    def _create_node_sg(self) -> aws_ec2.ISecurityGroup:
-        node_sg = aws_ec2.SecurityGroup(
-            scope=self,
-            id='eks-node-sg',
-            vpc=self.cluster.vpc,
-        )
-        node_sg.add_ingress_rule(
-            peer=node_sg,
-            connection=aws_ec2.Port.all_traffic(),
-        )
-        node_sg.add_ingress_rule(
-            peer=self.cluster_sg,
-            connection=aws_ec2.Port.tcp(port=443)
-        )
-        node_sg.add_egress_rule(
-            peer=self.cluster_sg,
-            connection=aws_ec2.Port.tcp_range(start_port=1025, end_port=65535)
-        )
-        return node_sg
 
     def _node_userdata(
         self,
@@ -173,12 +168,24 @@ set -o xtrace
         --resource NodeGroup  \
         --region {self.region}'''
 
-def _kubelet_args_to_str(name: str, args: typing.Optional[dict]) -> str:
-    _args = {}
-    _args.update({
-        'eviction-hard': 'memory.available<0.5Gi,nodefs.available<5%',
-        'node-labels': f'node-role.kubernetes.io/{name},node-role={name}',
-    })
+def _kubelet_args_to_str(
+    name: str,
+    labels: typing.Optional[dict]=None,
+    args: typing.Optional[dict]=None,
+) -> str:
+    _labels = {
+        f'node-role.kubernetes.io/{name}': '',
+        'node-role': name,
+    }
+    if labels:
+        _labels.update(labels)
+
+    _args = {
+        'node-labels': ','.join([
+            '%s=%s' % (k, v)
+            for k, v in _labels.items()
+        ])
+    }
     if args:
         _args.update(args)
     
@@ -186,3 +193,14 @@ def _kubelet_args_to_str(name: str, args: typing.Optional[dict]) -> str:
         '--%s=%s' % (k, v)
         for k, v in _args.items()
     ])
+
+def _add_eks_owned_tag(
+    scope: core.Construct,
+    cluster: aws_eks.ICluster,
+) -> None:
+    core.Tag.add(
+        scope=scope,
+        key='kubernetes.io/cluster/%s' % cluster.cluster_name,
+        value='owned',
+        apply_to_launched_instances=True,
+    )
