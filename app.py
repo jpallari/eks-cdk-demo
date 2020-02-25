@@ -10,15 +10,19 @@ import infra.network
 import infra.cluster_users
 import infra.eks
 
-app = core.App()
+# Config
+
 name = os.getenv('ENV_NAME', 'mytest')
 cluster_name = name
-env = core.Environment(region=os.getenv('AWS_REGION', 'eu-central-1'))
 tags = {
     'Team': 'kubebois'
 }
 cluster_version = '1.14'
+env = core.Environment(region=os.getenv('AWS_REGION', 'eu-central-1'))
 
+# Stacks
+
+app = core.App()
 network_stack = infra.network.NetworkStack(
     scope=app,
     id=name + '-network',
@@ -43,5 +47,7 @@ cluster_users_stack = infra.cluster_users.ClusterUsersStack(
     env=env,
     tags=tags
 )
+
+# Synthesize!
 
 app.synth()
