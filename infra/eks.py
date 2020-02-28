@@ -111,46 +111,47 @@ class EksStack(core.Stack):
             id=f'{name}-node-role',
             cluster=self.cluster,
         )
-
+        user_data = self._node_userdata(
+            _kubelet_args_to_str(name, labels={}, args=kubelet_extra_args)
+        )
+        subnets = aws_ec2.SubnetSelection(subnets=self.cluster.vpc.private_subnets)
+        rolling_upgrade_config = aws_autoscaling.RollingUpdateConfiguration(
+            max_batch_size=1,
+            min_instances_in_service=1,
+            pause_time=rolling_update_pause_time,
+            suspend_processes=[
+                aws_autoscaling.ScalingProcess.AZ_REBALANCE,
+            ],
+        )
+        ami = aws_eks.EksOptimizedImage(
+            kubernetes_version=self.cluster_version,
+            node_type=aws_eks.NodeType.STANDARD,
+        )
+        block_device = aws_autoscaling.BlockDevice(
+            device_name='/dev/xvda',
+            volume=aws_autoscaling.BlockDeviceVolume.ebs(
+                volume_size=root_volume_size,
+                delete_on_termination=True
+            ),
+        )
         asg = aws_autoscaling.AutoScalingGroup(
             scope=self,
             id=f'{name}-node-asg',
-            block_devices=[
-                aws_autoscaling.BlockDevice(
-                    device_name='/dev/xvda',
-                    volume=aws_autoscaling.BlockDeviceVolume.ebs(
-                        volume_size=root_volume_size,
-                        delete_on_termination=True
-                    ),
-                )
-            ],
+            block_devices=[block_device],
             instance_type=instance_type,
-            machine_image=aws_eks.EksOptimizedImage(
-                kubernetes_version=self.cluster_version,
-                node_type=aws_eks.NodeType.STANDARD,
-            ),
-            user_data=aws_ec2.UserData.custom(
-                self._node_userdata(_kubelet_args_to_str(name, labels={}, args=kubelet_extra_args))
-            ),
+            machine_image=ami,
+            user_data=aws_ec2.UserData.custom(content=user_data),
             vpc=self.cluster.vpc,
             role=role,
             min_capacity=min_capacity,
             max_capacity=max_capacity,
-            vpc_subnets=aws_ec2.SubnetSelection(subnets=self.cluster.vpc.private_subnets),
+            vpc_subnets=subnets,
             update_type=aws_autoscaling.UpdateType.ROLLING_UPDATE,
             allow_all_outbound=False,
-            rolling_update_configuration=aws_autoscaling.RollingUpdateConfiguration(
-                max_batch_size=1,
-                min_instances_in_service=1,
-                pause_time=rolling_update_pause_time,
-                suspend_processes=[
-                    aws_autoscaling.ScalingProcess.AZ_REBALANCE,
-                ],
-            ),
+            rolling_update_configuration=rolling_upgrade_config,
         )
         asg.add_security_group(self.node_sg)
         _add_eks_owned_tag(asg, self.cluster)
-
         return asg
 
     def _node_userdata(
@@ -170,8 +171,8 @@ set -o xtrace
 
 def _kubelet_args_to_str(
     name: str,
-    labels: typing.Optional[dict]=None,
-    args: typing.Optional[dict]=None,
+    labels: dict,
+    args: dict,
 ) -> str:
     _labels = {
         f'node-role.kubernetes.io/{name}': '',
@@ -181,17 +182,23 @@ def _kubelet_args_to_str(
         _labels.update(labels)
 
     _args = {
-        'node-labels': ','.join([
-            '%s=%s' % (k, v)
-            for k, v in _labels.items()
-        ])
+        'node-labels': _dict_to_labels_str(labels)
     }
     if args:
         _args.update(args)
     
+    return _dict_to_cli_args_str(_args)
+
+def _dict_to_labels_str(d: dict) -> str:
+    return ','.join([
+        '%s=%s' % (k, v)
+        for k, v in d.items()
+    ])
+
+def _dict_to_cli_args_str(d: dict) -> str:
     return ' '.join([
         '--%s=%s' % (k, v)
-        for k, v in _args.items()
+        for k, v in d.items()
     ])
 
 def _add_eks_owned_tag(
