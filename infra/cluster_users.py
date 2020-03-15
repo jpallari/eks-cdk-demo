@@ -7,7 +7,7 @@ from aws_cdk import (
     aws_iam,
 )
 
-class ClusterUsersStack(core.Stack):
+class EksClusterUsersStack(core.Stack):
     def __init__(
         self,
         scope: core.Construct,

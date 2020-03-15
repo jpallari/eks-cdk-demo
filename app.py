@@ -43,7 +43,7 @@ cluster_stack = infra.eks.EksStack(
     env=env,
     tags=tags,
 )
-cluster_users_stack = infra.cluster_users.ClusterUsersStack(
+cluster_users_stack = infra.cluster_users.EksClusterUsersStack(
     scope=app,
     id=name + '-users',
     clusters=[cluster_stack.cluster],
