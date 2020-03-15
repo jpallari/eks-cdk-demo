@@ -60,3 +60,28 @@ class EksStack(core.Stack):
                 'eviction-hard': 'memory.available<0.5Gi,nodefs.available<5%',
             }
         )
+
+        # Ingress
+        self.public_ingress = ingress.IngressConstruct(
+            scope=self,
+            id='public-ingress',
+            vpc=vpc,
+            instance_port=32080,
+            internet_facing=True,
+            subnets=vpc.public_subnets,
+            targets=self.default_worker.asgs,
+            ssl_certificate_id=None,
+        )
+        self.private_ingress = ingress.IngressConstruct(
+            scope=self,
+            id='private-ingress',
+            vpc=vpc,
+            instance_port=31080,
+            internet_facing=False,
+            subnets=vpc.private_subnets,
+            targets=self.default_worker.asgs,
+            allow_connections_from=[
+                aws_ec2.Peer.ipv4('10.0.0.0/8'),
+            ],
+            ssl_certificate_id=None,
+        )

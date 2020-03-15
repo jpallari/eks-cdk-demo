@@ -32,7 +32,7 @@ network_stack = infra.network.EksNetworkStack(
     cidr_id=100,
     cluster_name=cluster_name,
     env=env,
-    tags=tags
+    tags=tags,
 )
 cluster_stack = infra.eks.EksStack(
     scope=app,
@@ -48,7 +48,7 @@ cluster_users_stack = infra.cluster_users.EksClusterUsersStack(
     id=name + '-users',
     clusters=[cluster_stack.cluster],
     env=env,
-    tags=tags
+    tags=tags,
 )
 
 # Synthesize!
