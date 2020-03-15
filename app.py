@@ -26,7 +26,7 @@ env = core.Environment(
 # Stacks
 
 app = core.App()
-network_stack = infra.network.NetworkStack(
+network_stack = infra.network.EksNetworkStack(
     scope=app,
     id=name + '-network',
     cidr_id=100,

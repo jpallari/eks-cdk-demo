@@ -3,7 +3,7 @@ from aws_cdk import (
     aws_ec2,
 )
 
-class NetworkStack(core.Stack):
+class EksNetworkStack(core.Stack):
     def __init__(
         self,
         scope: core.Construct,
@@ -18,6 +18,7 @@ class NetworkStack(core.Stack):
             scope=self,
             id='eks',
             cidr='10.%d.0.0/16' % cidr_id,
+            max_azs=3,
             subnet_configuration=[
                 aws_ec2.SubnetConfiguration(
                     name='public',
