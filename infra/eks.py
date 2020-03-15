@@ -182,24 +182,34 @@ def _kubelet_args_to_str(
         _labels.update(labels)
 
     _args = {
-        'node-labels': _dict_to_labels_str(labels)
+        'node-labels': _dict_to_str(
+            d=_labels,
+            kv_pattern='%s=%s',
+            separator=','
+        ),
     }
     if args:
         _args.update(args)
     
-    return _dict_to_cli_args_str(_args)
+    return _dict_to_str(
+        d=_args,
+        kv_pattern='--%s=%s',
+        separator=' ',
+    )
 
-def _dict_to_labels_str(d: dict) -> str:
-    return ','.join([
-        '%s=%s' % (k, v)
+def _dict_to_str(d: dict, kv_pattern: str, separator: str) -> str:
+    elements = [
+        kv_pattern % (k, v)
         for k, v in d.items()
-    ])
+    ]
+    
+    # Sort the elements to keep the outcome idempotent.
+    # If not sorted, the output will change due to dictionary not being sorted.
+    # Technically, the output will be valid in any order,
+    # but it can cause unnecessary changes to be rolled out.
+    elements.sort()
 
-def _dict_to_cli_args_str(d: dict) -> str:
-    return ' '.join([
-        '--%s=%s' % (k, v)
-        for k, v in d.items()
-    ])
+    return separator.join(elements)
 
 def _add_eks_owned_tag(
     scope: core.Construct,
