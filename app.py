@@ -18,7 +18,10 @@ tags = {
     'Team': 'kubebois'
 }
 cluster_version = '1.14'
-env = core.Environment(region=os.getenv('AWS_REGION', 'eu-central-1'))
+env = core.Environment(
+    account=os.getenv('CDK_DEFAULT_ACCOUNT'), # if not set, CDK will not detect all available AZs
+    region=os.getenv('CDK_DEFAULT_REGION', 'eu-central-1')
+)
 
 # Stacks
 
