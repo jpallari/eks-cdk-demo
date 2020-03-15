@@ -19,13 +19,13 @@ setuptools.setup(
     packages=setuptools.find_packages(where="infra"),
 
     install_requires=[
-        "aws-cdk.core==1.25.0",
-        "aws-cdk.aws_autoscaling==1.25.0",
-        "aws-cdk.aws_eks==1.25.0",
-        "aws-cdk.aws_ec2==1.25.0",
-        "aws-cdk.aws_elasticloadbalancing==1.25.0",
-        "aws-cdk.aws_iam==1.25.0",
-        "aws-cdk.aws_ssm==1.25.0",
+        "aws-cdk.core==1.27.0",
+        "aws-cdk.aws_autoscaling==1.27.0",
+        "aws-cdk.aws_eks==1.27.0",
+        "aws-cdk.aws_ec2==1.27.0",
+        "aws-cdk.aws_elasticloadbalancing==1.27.0",
+        "aws-cdk.aws_iam==1.27.0",
+        "aws-cdk.aws_ssm==1.27.0",
     ],
 
     python_requires=">=3.6",
