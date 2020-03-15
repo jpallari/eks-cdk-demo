@@ -3,3 +3,4 @@ cdk.out/
 __pycache__/
 *.egg-info/
 *.pyc
+cdk.context.json
